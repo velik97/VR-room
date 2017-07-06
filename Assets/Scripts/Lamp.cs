@@ -12,14 +12,11 @@ public class Lamp : MonoSingleton <Lamp> {
 
 	public float intencity;
 
-	void Start () {
-		Set (true);
-	}
-
 	public void Set (bool _on) {
 		lightSource.intensity = _on ? intencity : 0f;
 		for (int i = 0; i < lampBodyParts.Length; i++) {
-			lampBodyParts[i].material = _on ? lampOnMaterial : lampOffMaterial;
+			lampBodyParts [i].material = _on ? lampOnMaterial : lampOffMaterial;
 		}
+
 	}
 }

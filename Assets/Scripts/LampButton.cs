@@ -13,27 +13,19 @@ public class LampButton : MonoBehaviour {
 	public float onPitch;
 	public float offPitch;
 
-	bool buttonIsOn;
 
-	void Start () {
-		buttonIsOn = true;
+	public void Press (GameObject presedButton) {
+		if (presedButton == onButton || presedButton ==  offButton) {
+
+			bool _on = presedButton == onButton;
+			MyNetworkManager.Instance.RequestChangeLampState (_on);
+		}
 	}
 
-	public void Set (GameObject presedButton) {
-		if (presedButton == onButton || presedButton ==  offButton) {
-			
-			bool _on = presedButton == onButton;
-
-			animator.SetBool ("On", _on);
-			Lamp.Instance.Set (_on);
-
-			if (buttonIsOn != _on) {
-				audioSource.pitch = _on ? onPitch : offPitch;
-				audioSource.Play ();
-			}
-
-			buttonIsOn = _on;
-		}
+	public void Set (bool _on) {			
+		animator.SetBool ("On", _on);
+		audioSource.pitch = _on ? onPitch : offPitch;
+		audioSource.Play ();
 
 	}
 }

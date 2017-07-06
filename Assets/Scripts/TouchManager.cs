@@ -18,7 +18,7 @@ public class TouchManager : MonoBehaviour {
 		if (Input.touches.Length > 0 || Input.GetMouseButton (0)) {
 			Vector3 inputPosition;
 
-			#if UNITY_EDITOR
+			#if UNITY_EDITOR || UNITY_STANDALONE_OSX
 			inputPosition = Input.mousePosition;
 			#else
 			inputPosition = (Vector3)Input.touches[0].position;
@@ -33,7 +33,7 @@ public class TouchManager : MonoBehaviour {
 					if (hitObject) {
 						LampButton lampButton = hitObject.GetComponentInParent <LampButton> ();
 						if (lampButton) {
-							lampButton.Set (hitObject);
+							lampButton.Press (hitObject);
 						}
 					}
 				}
