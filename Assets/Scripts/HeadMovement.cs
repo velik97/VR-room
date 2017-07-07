@@ -5,7 +5,7 @@ using UnityEngine;
 public class HeadMovement : MonoBehaviour {
 
 	public void SetRotation (Quaternion rotation) {
-		transform.rotation = rotation;
+		transform.localRotation = rotation;
 	}
 
 }

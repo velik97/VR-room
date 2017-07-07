@@ -7,11 +7,6 @@ using UnityEngine.Networking;
 
 public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 
-	public string host = "127.0.0.1";
-	public int port = 6321;
-
-	public Text logText;
-
 	public NetworkClient myClient;
 
 	public Transform[] playerSpawnTransfrom;
@@ -20,16 +15,23 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 	public GameObject playerPrefab;
 	public LampButton lampButtonPrefab;
 
+	public GameObject connectButton;
+
 	public Dictionary <int, NetworkEntity> networkEntities;
 	public int localPlayerId;
-	public NetworkEntity playerNetworkEntity;
+	public Transform playerTransfrom;
+	public LampButton lampButton;
 
 	private bool connected;
+	private bool gameFound;
 
 	public bool lampIsOn;
 
 	public int tickRate;
 	private float timeBetweenTicks;
+
+	private string host;
+	private int port;
 
 	private IEnumerator transfromSendingIEnumerator;
 
@@ -41,14 +43,45 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 
 	void Awake () {
 		Lamp.Instance.Set (lampIsOn);
+		lampButton.SetSilently (lampIsOn);
 		connected = false;
+		gameFound = false;
 		timeBetweenTicks = 1f / ((float)tickRate);
+
+		connectButton.SetActive (true);
+		connectButton.GetComponentInChildren <Text> ().text = "Find Game";
+	}
+
+	public void OnButtonClicked () {
+		if (!gameFound) {
+			connectButton.SetActive (false);
+			GetComponent <LocalDiscovery> ().FindGame ();
+			return;
+		}
+
+		if (!connected) {
+			ConnectToServer ();
+			connectButton.SetActive (false);
+		} else {
+			myClient.Disconnect ();
+			OnDisconnected ();
+		}
+	}
+
+	public void OnFoundGame (string _host, int _port) {
+		host = _host;
+		port = _port;
+		gameFound = true;
+		Logger.Instance.Log ("Game found");
+		connectButton.SetActive (true);
+		connectButton.GetComponentInChildren <Text> ().text = "Connect";
 	}
 
 	public void ConnectToServer () {
 		myClient = new NetworkClient();
 		RegisterHandlers ();
 		networkEntities = new Dictionary <int, NetworkEntity> ();
+		connectButton.SetActive (false);
 		myClient.Connect(host, port);
 	}
 
@@ -67,43 +100,34 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 	}
 
 	void OnSpawnPlayer (NetworkMessage msg) {
-
 		localPlayerId = msg.ReadMessage <PlayerSpawnMessage> ().playerId;
-		playerNetworkEntity = InstantiateNetworkEntity <GyroHeadMovementController> (localPlayerId);
-
-		Transform mainCameraTransform = Camera.main.transform;
-
-		mainCameraTransform.position = playerNetworkEntity.headMovementController.transform.position;
-		mainCameraTransform.rotation = playerNetworkEntity.headMovementController.transform.rotation;
-		mainCameraTransform.SetParent (playerNetworkEntity.headMovementController.transform);
-
-		playerNetworkEntity.headMovementController.gameObject.AddComponent <TouchManager> ();
-
-		Log ("Spawned with playerId = " + localPlayerId.ToString ());
+		Logger.Instance.Log ("Spawned with playerId = " + localPlayerId.ToString ());
 	}
 
 	void OnConnectPlayer (NetworkMessage msg) {
 
 		int playerId = msg.ReadMessage <PLayerConnectMessage> ().playerId;
 
-		Log ("Connected player with id = " + playerId.ToString ());
+		Logger.Instance.Log ("Connected player with id = " + playerId.ToString ());
 
-		networkEntities.Add (playerId, InstantiateNetworkEntity <LinearInterpolatingMovementController> (playerId));
+		networkEntities.Add (playerId, InstantiateNetworkEntity (playerId));
 	}
 
-	NetworkEntity InstantiateNetworkEntity <T> (int playerId) where T : HeadMovementController {
-		
-		GameObject newPLayer = (GameObject)Instantiate (playerPrefab,
-			playerSpawnTransfrom [playerId - 1].position,
-			playerSpawnTransfrom [playerId - 1].rotation);
-		newPLayer.transform.SetParent (playerSpawnTransfrom [playerId - 1]);
+	NetworkEntity InstantiateNetworkEntity (int playerId) {
 
-		T headMovementController = newPLayer.AddComponent <T> ();
+		int spawnPoint = (playerId - localPlayerId + 4) % 4;
+
+		GameObject newPLayer = (GameObject)Instantiate (playerPrefab,
+			playerSpawnTransfrom [spawnPoint].position,
+			playerSpawnTransfrom [spawnPoint].rotation);
+		newPLayer.transform.SetParent (playerSpawnTransfrom [spawnPoint]);
+
+		InterpolatingMovementController headMovementController = newPLayer.AddComponent <InterpolatingMovementController> ();
 
 		LampButton newLampButton = (LampButton)Instantiate (lampButtonPrefab,
-			buttonsSpawnTransform [playerId - 1].position,
-			buttonsSpawnTransform [playerId - 1].rotation);
-		newLampButton.transform.SetParent (buttonsSpawnTransform [playerId - 1]);
+			buttonsSpawnTransform [spawnPoint].position,
+			buttonsSpawnTransform [spawnPoint].rotation);
+		newLampButton.transform.SetParent (buttonsSpawnTransform [spawnPoint]);
 
 		newLampButton.Set (lampIsOn);
 
@@ -114,7 +138,7 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 
 		int playerId = msg.ReadMessage <PLayerDisonnectMessage> ().playerId;
 
-		Log ("Disonnected player with id = " + playerId.ToString ());
+		Logger.Instance.Log ("Disonnected player with id = " + playerId.ToString ());
 
 		foreach (int id in networkEntities.Keys) {
 			if (id == playerId) {
@@ -129,30 +153,32 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 
 		bool _on = msg.ReadMessage <LampStateMessage> ()._on;
 
-		Log ("Server: lamp state is " + _on); 
 		ChangeLampState (_on);
 
 	}
 
 	public void RequestChangeLampState (bool _on) {
-		
-		LampStateMessage lampStateMessage = new LampStateMessage ();
-		lampStateMessage._on = _on;
 
-		myClient.Send (LampStateMessageId, lampStateMessage);
+		if (myClient != null && myClient.isConnected) {
+			LampStateMessage lampStateMessage = new LampStateMessage ();
+			lampStateMessage._on = _on;
 
+			myClient.Send (LampStateMessageId, lampStateMessage);
+		}
 		ChangeLampState (_on);
 	}
 
 	void ChangeLampState (bool _on) {
 		
 		if (lampIsOn != _on) {
-			
-			foreach (NetworkEntity ne in networkEntities.Values) {
-				ne.lampButton.Set (_on);
+
+			if (networkEntities != null) {
+				foreach (NetworkEntity ne in networkEntities.Values) {
+					ne.lampButton.Set (_on);
+				}
 			}
 
-			playerNetworkEntity.lampButton.Set (_on);
+			lampButton.Set (_on);
 			Lamp.Instance.Set (_on);
 
 			lampIsOn = _on;
@@ -163,23 +189,36 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 		PLayerTransformMessage playerTransformMessage = msg.ReadMessage <PLayerTransformMessage> ();
 
 		if (networkEntities.ContainsKey (playerTransformMessage.playerId)) {
-			((LinearInterpolatingMovementController)networkEntities [playerTransformMessage.playerId].headMovementController)
+			((InterpolatingMovementController)networkEntities [playerTransformMessage.playerId].headMovementController)
 				.TakeNewValue (playerTransformMessage.eulerAngles);
 		} else {
-			Log ("[Error] trying to change transfrom of client " + playerTransformMessage.playerId + ", but id doesn't exist");
+			Logger.Instance.Log ("[Error] trying to change transfrom of client " + playerTransformMessage.playerId + ", but id doesn't exist");
 		}
 	}
 
-	public void OnConnected (NetworkMessage nsg) {
-		Log("Connected to server");
+	void OnConnected (NetworkMessage nsg) {
+		Logger.Instance.Log("Connected to server");
 		connected = true;
+		connectButton.SetActive (true);
+		connectButton.GetComponentInChildren <Text> ().text = "Disconnect";
 		transfromSendingIEnumerator = SendPlayerTransformCyclically ();
 		StartCoroutine (transfromSendingIEnumerator);
 	}
 
-	public void OnDisconnected (NetworkMessage msg) {
-		Log("Disconnected from server");
+	void OnDisconnected (NetworkMessage msg) {
+		OnDisconnected ();
+	}
+
+	void OnDisconnected () {
+		Logger.Instance.Log("Disconnected from server");
 		connected = false;
+		gameFound = false;
+		connectButton.SetActive (true);
+		connectButton.GetComponentInChildren <Text> ().text = "Connect";
+		foreach (NetworkEntity ne in networkEntities.Values) {
+			ne.Destroy ();
+		}
+		networkEntities.Clear ();
 		StopCoroutine (transfromSendingIEnumerator);
 	}
 
@@ -190,15 +229,11 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 
 			PLayerTransformMessage playerTransfromMessage = new PLayerTransformMessage ();
 			playerTransfromMessage.playerId = localPlayerId;
-			playerTransfromMessage.eulerAngles = playerNetworkEntity.headMovementController.transform.rotation.eulerAngles;
+			playerTransfromMessage.eulerAngles = playerTransfrom.rotation.eulerAngles;
 
 			myClient.Send (PLayerTransformMessageId, playerTransfromMessage);
 		}
 	}
 
-	void Log (string log) {
-		Debug.Log(log);
-		logText.text += "\n// " + log;
-	}
 
 }

@@ -26,6 +26,9 @@ public class LampButton : MonoBehaviour {
 		animator.SetBool ("On", _on);
 		audioSource.pitch = _on ? onPitch : offPitch;
 		audioSource.Play ();
+	}
 
+	public void SetSilently (bool _on) {
+		animator.SetBool ("On", _on);
 	}
 }
