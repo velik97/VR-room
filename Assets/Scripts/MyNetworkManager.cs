@@ -31,13 +31,15 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 	public int tickRate;
 	private float timeBetweenTicks;
 
+	private IEnumerator transfromSendingIEnumerator;
+
 	public const short PlayerSpawnMessageId = 101;
 	public const short PLayerConnectMessageId = 102;
 	public const short PLayerDisonnectMessageId = 103;
 	public const short PLayerTransformMessageId = 104;
 	public const short LampStateMessageId = 105;
 
-	void Start () {
+	void Awake () {
 		Lamp.Instance.Set (lampIsOn);
 		connected = false;
 		timeBetweenTicks = 1f / ((float)tickRate);
@@ -59,14 +61,14 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 		myClient.RegisterHandler (PLayerConnectMessageId, OnConnectPlayer);
 		myClient.RegisterHandler (PLayerDisonnectMessageId, OnDisconnectPlayer);
 
-//		MyNetworkManager.Instance.myClient.RegisterHandler (PLayerTransformMessageId, ...);
+		MyNetworkManager.Instance.myClient.RegisterHandler (PLayerTransformMessageId, OnPlayerTransform);
 		myClient.RegisterHandler (LampStateMessageId, OnChangeLampState);
 
 	}
 
 	void OnSpawnPlayer (NetworkMessage msg) {
 
-		localPlayerId = msg.ReadMessage <PlayerSpawnMessage> ().playerID;
+		localPlayerId = msg.ReadMessage <PlayerSpawnMessage> ().playerId;
 		playerNetworkEntity = InstantiateNetworkEntity <GyroHeadMovementController> (localPlayerId);
 
 		Transform mainCameraTransform = Camera.main.transform;
@@ -82,11 +84,11 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 
 	void OnConnectPlayer (NetworkMessage msg) {
 
-		int playerId = msg.ReadMessage <PLayerConnectMessage> ().playerID;
+		int playerId = msg.ReadMessage <PLayerConnectMessage> ().playerId;
 
 		Log ("Connected player with id = " + playerId.ToString ());
 
-		networkEntities.Add (playerId, InstantiateNetworkEntity <InterpolatingMovementController> (playerId));
+		networkEntities.Add (playerId, InstantiateNetworkEntity <LinearInterpolatingMovementController> (playerId));
 	}
 
 	NetworkEntity InstantiateNetworkEntity <T> (int playerId) where T : HeadMovementController {
@@ -110,7 +112,7 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 
 	void OnDisconnectPlayer (NetworkMessage msg) {
 
-		int playerId = msg.ReadMessage <PLayerDisonnectMessage> ().playerID;
+		int playerId = msg.ReadMessage <PLayerDisonnectMessage> ().playerId;
 
 		Log ("Disonnected player with id = " + playerId.ToString ());
 
@@ -158,18 +160,27 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 	}
 
 	void OnPlayerTransform (NetworkMessage msg) {
-		PLayerTransformMessage playerTransfromMessage = msg.ReadMessage <PLayerTransformMessage> ();
+		PLayerTransformMessage playerTransformMessage = msg.ReadMessage <PLayerTransformMessage> ();
 
+		if (networkEntities.ContainsKey (playerTransformMessage.playerId)) {
+			((LinearInterpolatingMovementController)networkEntities [playerTransformMessage.playerId].headMovementController)
+				.TakeNewValue (playerTransformMessage.eulerAngles);
+		} else {
+			Log ("[Error] trying to change transfrom of client " + playerTransformMessage.playerId + ", but id doesn't exist");
+		}
 	}
 
 	public void OnConnected (NetworkMessage nsg) {
 		Log("Connected to server");
 		connected = true;
+		transfromSendingIEnumerator = SendPlayerTransformCyclically ();
+		StartCoroutine (transfromSendingIEnumerator);
 	}
 
 	public void OnDisconnected (NetworkMessage msg) {
 		Log("Disconnected from server");
 		connected = false;
+		StopCoroutine (transfromSendingIEnumerator);
 	}
 
 	IEnumerator SendPlayerTransformCyclically () {
@@ -178,8 +189,8 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 			yield return new WaitForSeconds (timeBetweenTicks);
 
 			PLayerTransformMessage playerTransfromMessage = new PLayerTransformMessage ();
-			playerTransfromMessage.playerID = localPlayerId;
-			playerTransfromMessage.rotation = playerNetworkEntity.headMovementController.transform.rotation;
+			playerTransfromMessage.playerId = localPlayerId;
+			playerTransfromMessage.eulerAngles = playerNetworkEntity.headMovementController.transform.rotation.eulerAngles;
 
 			myClient.Send (PLayerTransformMessageId, playerTransfromMessage);
 		}

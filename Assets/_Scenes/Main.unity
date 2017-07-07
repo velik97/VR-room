@@ -1163,7 +1163,9 @@ MonoBehaviour:
     type: 2}
   lampButtonPrefab: {fileID: 114735858134990740, guid: 0433679837ae349038cd51d6696baed2,
     type: 2}
+  localPlayerId: 0
   lampIsOn: 0
+  tickRate: 20
 --- !u!4 &1162098144
 Transform:
   m_ObjectHideFlags: 0

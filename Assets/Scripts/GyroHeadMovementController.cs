@@ -29,7 +29,7 @@ public class GyroHeadMovementController : HeadMovementController {
 	[Range(0f, 10f)]
 	public float speed = 3f;
 
-	void Update () {
+	void Update () { 
 
 		float v = Input.GetAxis ("Vertical");
 		float h = Input.GetAxis ("Horizontal");
