@@ -4,6 +4,7 @@ using UnityEngine;
 
 public class TouchManager : MonoBehaviour {
 
+	public float touchLength = 10f;
 	private LayerMask touchFieldsLayer;
 
 	private bool isTouching;
@@ -27,7 +28,7 @@ public class TouchManager : MonoBehaviour {
 			Ray camRay = mainCamera.ScreenPointToRay (inputPosition);
 			RaycastHit hit;
 
-			if (Physics.Raycast (camRay, out hit, 20f, touchFieldsLayer)) {
+			if (Physics.Raycast (camRay, out hit, touchLength, touchFieldsLayer)) {
 				if (!isTouching) {
 					GameObject hitObject = hit.collider.gameObject;
 					if (hitObject) {
