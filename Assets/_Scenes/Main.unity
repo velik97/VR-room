@@ -738,7 +738,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4889811d2663945069fa32800ec2eeb6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  logText: {fileID: 658074897}
   header: 'Log:'
   stringsCount: 11
 --- !u!1 &773572555
@@ -1223,12 +1222,11 @@ MonoBehaviour:
     type: 2}
   lampButtonPrefab: {fileID: 114735858134990740, guid: 0433679837ae349038cd51d6696baed2,
     type: 2}
-  connectButton: {fileID: 453181291}
-  localPlayerId: 0
-  playerTransfrom: {fileID: 1501847041}
-  lampButton: {fileID: 1501456158}
+  localPlayerTransform: {fileID: 1501847041}
+  localLampButton: {fileID: 1501456158}
   lampIsOn: 0
   tickRate: 10
+  connectButton: {fileID: 453181291}
 --- !u!4 &1162098144
 Transform:
   m_ObjectHideFlags: 0

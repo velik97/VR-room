@@ -5,27 +5,30 @@ using System;
 using UnityEngine.UI;
 using UnityEngine.Networking;
 
+[RequireComponent(typeof(LocalDiscovery))]
 public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 
-	public NetworkClient myClient;
+	private NetworkClient myClient;
 
 	public Transform[] playerSpawnTransfrom;
 	public Transform[] buttonsSpawnTransform;
 
+	[Space(10)]
 	public GameObject playerPrefab;
 	public LampButton lampButtonPrefab;
 
-	public GameObject connectButton;
+	private Dictionary <int, Entity> entities;
 
-	public Dictionary <int, NetworkEntity> networkEntities;
-	public int localPlayerId;
-	public Transform playerTransfrom;
-	public LampButton lampButton;
+	[Space(10)]
+	public Transform localPlayerTransform;
+	public LampButton localLampButton;
+	private int localPlayerId;
+
+	[Space(10)]          
+	public bool lampIsOn;
 
 	private bool connected;
 	private bool gameFound;
-
-	public bool lampIsOn;
 
 	public int tickRate;
 	private float timeBetweenTicks;
@@ -33,17 +36,21 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 	private string host;
 	private int port;
 
+	public GameObject connectButton;
+
 	private IEnumerator transfromSendingIEnumerator;
 
-	public const short PlayerSpawnMessageId = 101;
-	public const short PLayerConnectMessageId = 102;
-	public const short PLayerDisonnectMessageId = 103;
-	public const short PLayerTransformMessageId = 104;
-	public const short LampStateMessageId = 105;
+	private const short PlayerSpawnMessageId = 101;
+	private const short PLayerConnectMessageId = 102;
+	private const short PLayerDisonnectMessageId = 103;
+	private const short PLayerTransformMessageId = 104;
+	private const short LampStateMessageId = 105;
 
 	void Awake () {
+		
 		Lamp.Instance.Set (lampIsOn);
-		lampButton.SetSilently (lampIsOn);
+		localLampButton.SetSilently (lampIsOn);
+
 		connected = false;
 		gameFound = false;
 		timeBetweenTicks = 1f / ((float)tickRate);
@@ -52,16 +59,22 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 		connectButton.GetComponentInChildren <Text> ().text = "Find Game";
 	}
 
+
 	public void OnButtonClicked () {
+		
+		// Finding game on LAN
 		if (!gameFound) {
 			connectButton.SetActive (false);
 			GetComponent <LocalDiscovery> ().FindGame ();
 			return;
 		}
 
+		// Connecting to found game
 		if (!connected) {
 			ConnectToServer ();
 			connectButton.SetActive (false);
+
+		// Disconnecting from game
 		} else {
 			myClient.Disconnect ();
 			OnDisconnected ();
@@ -69,20 +82,26 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 	}
 
 	public void OnFoundGame (string _host, int _port) {
+		
 		host = _host;
 		port = _port;
+
 		gameFound = true;
 		Logger.Instance.Log ("Game found");
+
 		connectButton.SetActive (true);
 		connectButton.GetComponentInChildren <Text> ().text = "Connect";
 	}
 
 	public void ConnectToServer () {
+		
+		entities = new Dictionary <int, Entity> ();
+
 		myClient = new NetworkClient();
 		RegisterHandlers ();
-		networkEntities = new Dictionary <int, NetworkEntity> ();
-		connectButton.SetActive (false);
 		myClient.Connect(host, port);
+
+		connectButton.SetActive (false);
 	}
 
 	public void RegisterHandlers () {
@@ -94,26 +113,32 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 		myClient.RegisterHandler (PLayerConnectMessageId, OnConnectPlayer);
 		myClient.RegisterHandler (PLayerDisonnectMessageId, OnDisconnectPlayer);
 
-		MyNetworkManager.Instance.myClient.RegisterHandler (PLayerTransformMessageId, OnPlayerTransform);
+		myClient.RegisterHandler (PLayerTransformMessageId, OnPlayerTransform);
 		myClient.RegisterHandler (LampStateMessageId, OnChangeLampState);
 
 	}
-
+		
+	// Gives local player his Id
 	void OnSpawnPlayer (NetworkMessage msg) {
 		localPlayerId = msg.ReadMessage <PlayerSpawnMessage> ().playerId;
 		Logger.Instance.Log ("Spawned with playerId = " + localPlayerId.ToString ());
+
+		transfromSendingIEnumerator = SendPlayerTransformCyclically ();
+		StartCoroutine (transfromSendingIEnumerator);
 	}
 
+	// Gives local plater Id of other player
 	void OnConnectPlayer (NetworkMessage msg) {
 
 		int playerId = msg.ReadMessage <PLayerConnectMessage> ().playerId;
 
 		Logger.Instance.Log ("Connected player with id = " + playerId.ToString ());
 
-		networkEntities.Add (playerId, InstantiateNetworkEntity (playerId));
+		entities.Add (playerId, InstantiateEntity (playerId));
 	}
 
-	NetworkEntity InstantiateNetworkEntity (int playerId) {
+	// Insantiates non local player
+	Entity InstantiateEntity (int playerId) {
 
 		int spawnPoint = (playerId - localPlayerId + 4) % 4;
 
@@ -131,40 +156,43 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 
 		newLampButton.Set (lampIsOn);
 
-		return new NetworkEntity (headMovementController, newLampButton);
+		return new Entity (headMovementController, newLampButton);
 	}
 
+	// Deletes non local player if he disconnects
 	void OnDisconnectPlayer (NetworkMessage msg) {
 
 		int playerId = msg.ReadMessage <PLayerDisonnectMessage> ().playerId;
 
 		Logger.Instance.Log ("Disonnected player with id = " + playerId.ToString ());
 
-		foreach (int id in networkEntities.Keys) {
+		foreach (int id in entities.Keys) {
 			if (id == playerId) {
-				networkEntities [id].Destroy ();
-				networkEntities.Remove (id);
+				entities [id].Destroy ();
+				entities.Remove (id);
 				break;
 			}
 		}
 	}
-
+		
 	void OnChangeLampState (NetworkMessage msg) {
 
 		bool _on = msg.ReadMessage <LampStateMessage> ()._on;
-
 		ChangeLampState (_on);
-
 	}
 
+	// Public function to call if you wnat to set lamp state
 	public void RequestChangeLampState (bool _on) {
 
 		if (myClient != null && myClient.isConnected) {
+			
 			LampStateMessage lampStateMessage = new LampStateMessage ();
 			lampStateMessage._on = _on;
 
 			myClient.Send (LampStateMessageId, lampStateMessage);
 		}
+
+		// Server is authoritarian. In order to hide delay we change lamp state immidiatly, but if server sends other signal we change it again
 		ChangeLampState (_on);
 	}
 
@@ -172,37 +200,40 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 		
 		if (lampIsOn != _on) {
 
-			if (networkEntities != null) {
-				foreach (NetworkEntity ne in networkEntities.Values) {
-					ne.lampButton.Set (_on);
+			if (entities != null) {
+				foreach (Entity e in entities.Values) {
+					e.lampButton.Set (_on);
 				}
 			}
 
-			lampButton.Set (_on);
+			localLampButton.Set (_on);
 			Lamp.Instance.Set (_on);
 
 			lampIsOn = _on;
 		}
 	}
 
+	// Changes transform of non local players
 	void OnPlayerTransform (NetworkMessage msg) {
+		
 		PLayerTransformMessage playerTransformMessage = msg.ReadMessage <PLayerTransformMessage> ();
-
-		if (networkEntities.ContainsKey (playerTransformMessage.playerId)) {
-			((InterpolatingMovementController)networkEntities [playerTransformMessage.playerId].headMovementController)
+		if (entities.ContainsKey (playerTransformMessage.playerId)) {
+			
+			((InterpolatingMovementController)entities [playerTransformMessage.playerId].headMovementController)
 				.TakeNewValue (playerTransformMessage.eulerAngles);
 		} else {
+			
 			Logger.Instance.Log ("[Error] trying to change transfrom of client " + playerTransformMessage.playerId + ", but id doesn't exist");
 		}
 	}
-
+		
 	void OnConnected (NetworkMessage nsg) {
+		
 		Logger.Instance.Log("Connected to server");
 		connected = true;
+
 		connectButton.SetActive (true);
 		connectButton.GetComponentInChildren <Text> ().text = "Disconnect";
-		transfromSendingIEnumerator = SendPlayerTransformCyclically ();
-		StartCoroutine (transfromSendingIEnumerator);
 	}
 
 	void OnDisconnected (NetworkMessage msg) {
@@ -210,27 +241,30 @@ public class MyNetworkManager : MonoSingleton <MyNetworkManager> {
 	}
 
 	void OnDisconnected () {
+		
 		Logger.Instance.Log("Disconnected from server");
 		connected = false;
 		gameFound = false;
-		connectButton.SetActive (true);
-		connectButton.GetComponentInChildren <Text> ().text = "Connect";
-		foreach (NetworkEntity ne in networkEntities.Values) {
-			ne.Destroy ();
-		}
-		networkEntities.Clear ();
+
+		foreach (Entity e in entities.Values) { e.Destroy (); }
+		entities.Clear ();
+
 		StopCoroutine (transfromSendingIEnumerator);
+
+		connectButton.SetActive (true);
+		connectButton.GetComponentInChildren <Text> ().text = "Find Game";
 	}
 
+	// Sends to server local player's transform several times every second
 	IEnumerator SendPlayerTransformCyclically () {
-		
+
+		PLayerTransformMessage playerTransfromMessage = new PLayerTransformMessage ();
+		playerTransfromMessage.playerId = localPlayerId;
+
 		while (connected) {
+			
 			yield return new WaitForSeconds (timeBetweenTicks);
-
-			PLayerTransformMessage playerTransfromMessage = new PLayerTransformMessage ();
-			playerTransfromMessage.playerId = localPlayerId;
-			playerTransfromMessage.eulerAngles = playerTransfrom.rotation.eulerAngles;
-
+			playerTransfromMessage.eulerAngles = localPlayerTransform.rotation.eulerAngles;
 			myClient.Send (PLayerTransformMessageId, playerTransfromMessage);
 		}
 	}

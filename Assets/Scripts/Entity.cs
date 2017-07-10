@@ -2,12 +2,12 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class NetworkEntity {
+public class Entity {
 
 	public HeadMovementController headMovementController;
 	public LampButton lampButton;
 
-	public NetworkEntity (HeadMovementController headMovementController, LampButton lampButton) {
+	public Entity (HeadMovementController headMovementController, LampButton lampButton) {
 		this.headMovementController = headMovementController;
 		this.lampButton = lampButton;
 	}

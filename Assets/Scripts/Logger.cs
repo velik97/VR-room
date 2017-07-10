@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 public class Logger : MonoSingleton <Logger> {
 
-	public Text logText;
+	private Text logText;
 
 	public string header;
 	public int stringsCount;
@@ -14,6 +14,8 @@ public class Logger : MonoSingleton <Logger> {
 	private Queue <string> logHistory;
 
 	void Awake () {
+		
+		logText = GetComponent <Text> ();
 		logHistory = new Queue <string> ();
 		logText.text = header;
 	}
